@@ -13,6 +13,10 @@ final class TimelineEvent {
     var timestamp: Date
     var receivedAt: Date
 
+    var isUpcoming: Bool {
+        timestamp > Date()
+    }
+
     init(
         id: String,
         agentId: String,

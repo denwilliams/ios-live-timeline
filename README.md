@@ -48,7 +48,7 @@ Agents publish JSON messages to the SQS queue:
 | `body` | string | No | Detailed message (can be empty) |
 | `status` | string | Yes | One of: `info`, `in_progress`, `success`, `warning`, `error` |
 | `category` | string | No | Free-text category for filtering (e.g. `code-review`, `email`, `deploy`) |
-| `timestamp` | string (ISO 8601) | Yes | When the event occurred |
+| `timestamp` | string (ISO 8601) | Yes | When the event occurred (or is scheduled to occur) |
 
 ### Status Values
 
@@ -59,6 +59,25 @@ Agents publish JSON messages to the SQS queue:
 | `success` | Task completed successfully | Green |
 | `warning` | Completed with warnings or needs attention | Orange |
 | `error` | Task failed | Red |
+
+### Upcoming Events
+
+Events with a future `timestamp` are treated as upcoming (e.g. calendar appointments, scheduled deploys). They appear in a compact section at the top of the timeline, sorted soonest-first. Once their timestamp passes, they move into the regular timeline automatically.
+
+An agent publishes an upcoming event exactly like any other event — just set `timestamp` to a future time:
+
+```json
+{
+  "id": "...",
+  "agent_id": "calendar-sync",
+  "task_id": "meeting-standup-feb7",
+  "title": "Team standup",
+  "body": "",
+  "status": "info",
+  "category": "calendar",
+  "timestamp": "2026-02-07T15:00:00Z"
+}
+```
 
 ### Upsert Behavior
 

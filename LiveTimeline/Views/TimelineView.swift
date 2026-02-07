@@ -8,7 +8,7 @@ struct TimelineView: View {
     @State private var statusFilter: EventStatus?
     @Bindable var sqsService: SQSService
 
-    var filteredEvents: [TimelineEvent] {
+    private var filteredEvents: [TimelineEvent] {
         events.filter { event in
             let matchesSearch = searchText.isEmpty
                 || event.title.localizedCaseInsensitiveContains(searchText)
@@ -20,6 +20,16 @@ struct TimelineView: View {
 
             return matchesSearch && matchesStatus
         }
+    }
+
+    private var upcomingEvents: [TimelineEvent] {
+        filteredEvents
+            .filter { $0.isUpcoming }
+            .sorted { $0.timestamp < $1.timestamp }
+    }
+
+    private var pastEvents: [TimelineEvent] {
+        filteredEvents.filter { !$0.isUpcoming }
     }
 
     var body: some View {
@@ -38,8 +48,34 @@ struct TimelineView: View {
                     )
                 )
             } else {
-                List(filteredEvents) { event in
-                    EventRowView(event: event)
+                List {
+                    if !upcomingEvents.isEmpty {
+                        Section {
+                            ForEach(upcomingEvents) { event in
+                                UpcomingEventRowView(event: event)
+                            }
+                        } header: {
+                            Label("Upcoming", systemImage: "calendar")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .textCase(nil)
+                        }
+                    }
+
+                    if !pastEvents.isEmpty {
+                        Section {
+                            ForEach(pastEvents) { event in
+                                EventRowView(event: event)
+                            }
+                        } header: {
+                            if !upcomingEvents.isEmpty {
+                                Label("Timeline", systemImage: "clock")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .textCase(nil)
+                            }
+                        }
+                    }
                 }
                 .listStyle(.plain)
             }
