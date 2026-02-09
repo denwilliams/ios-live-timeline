@@ -1,28 +1,29 @@
 # iOS Live Timeline
 
-An iPad app that displays a real-time timeline of events pushed by AI agents via AWS SQS.
+An iPad app that displays a real-time timeline of events pushed by AI agents via Upstash Redis.
 
-Background AI agents work on tasks and push status updates to an SQS queue. The iPad app long-polls the queue and displays events in a scrollable, searchable timeline — newest first.
+Background AI agents work on tasks and push status updates to an Upstash Redis list. The iPad app polls the REST API to consume messages.
 
 ## Architecture
 
 ```
-AI Agent ──→ [publish_event.py] ──→ AWS SQS Queue ──→ iPad App (long-poll)
+AI Agent ──→ [publish_event.sh] ──→ Upstash Redis ──→ iPad App (RPOP polling)
+                (LPUSH via REST)         (list)         (REST API, configurable interval)
                                                             │
                                                       SwiftData (local)
                                                             │
                                                       Timeline UI
 ```
 
-- **No backend server.** Agents publish directly to SQS. The iPad consumes directly from SQS.
-- **SQS long polling** (20s wait) gives near-real-time delivery with no throttling.
-- **Local persistence** via SwiftData — events survive app restarts.
-- **Upsert behavior** — if an agent sends a new event with the same `task_id`, the app replaces the old event and moves it to the top.
-- **Message durability** — if the app is offline, messages wait in the queue (up to 4 days by default).
+- **No backend server.** Agents push directly to Upstash Redis REST API. iPad consumes via REST API.
+- **Redis list as queue** - LPUSH to add, RPOP to consume (FIFO ordering)
+- **Configurable polling** (5-60s interval) - balance responsiveness vs API usage
+- **Local persistence** via SwiftData — events survive app restarts
+- **Upsert behavior** — events with the same `task_id` replace older events
 
 ## Event Payload Format
 
-Agents publish JSON messages to the SQS queue:
+Agents publish JSON messages to the Redis list:
 
 ```json
 {
@@ -64,73 +65,59 @@ Agents publish JSON messages to the SQS queue:
 
 Events with a future `timestamp` are treated as upcoming (e.g. calendar appointments, scheduled deploys). They appear in a compact section at the top of the timeline, sorted soonest-first. Once their timestamp passes, they move into the regular timeline automatically.
 
-An agent publishes an upcoming event exactly like any other event — just set `timestamp` to a future time:
-
-```json
-{
-  "id": "...",
-  "agent_id": "calendar-sync",
-  "task_id": "meeting-standup-feb7",
-  "title": "Team standup",
-  "body": "",
-  "status": "info",
-  "category": "calendar",
-  "timestamp": "2026-02-07T15:00:00Z"
-}
-```
-
 ### Upsert Behavior
 
 When the app receives an event whose `task_id` matches an existing event, the old event is **replaced** (not duplicated). The new event appears at the top of the timeline. This lets agents send progressive updates for long-running tasks without cluttering the timeline.
 
 ## Setup
 
-### 1. AWS SQS Queue
+### 1. Upstash Redis
 
-Create a standard SQS queue:
+1. Create a Redis database at [console.upstash.com](https://console.upstash.com/redis)
+2. Go to the **REST API** tab
+3. Copy the **REST URL** (e.g., `https://mutual-firefly-12345.upstash.io`)
+4. Copy the **REST Token**
 
-```bash
-aws sqs create-queue --queue-name live-timeline
-```
-
-Create an IAM user (or role) with permissions to send and receive:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": ["sqs:SendMessage"],
-      "Resource": "arn:aws:sqs:*:*:live-timeline"
-    },
-    {
-      "Effect": "Allow",
-      "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
-      "Resource": "arn:aws:sqs:*:*:live-timeline"
-    }
-  ]
-}
-```
-
-Ideally, use separate credentials: one for agents (send-only) and one for the iPad app (receive + delete).
-
-### 2. Agent Tool (Python)
+### 2. Agent Tool (Bash)
 
 ```bash
 cd agent-tool
-pip install -r requirements.txt
-export TIMELINE_QUEUE_URL="https://sqs.us-east-1.amazonaws.com/123456789/live-timeline"
-python publish_event.py --title "Deployment started" --status in_progress --agent-id deployer
+
+# Set environment variables (uses REST API)
+export UPSTASH_REDIS_URL="https://mutual-firefly-12345.upstash.io"
+export UPSTASH_REDIS_TOKEN="your-rest-token-here"
+
+# Publish an event
+./publish_event.sh --title "Deployment started" --status in_progress --agent-id deployer
+
+# Publish with all options
+./publish_event.sh \
+  --agent-id deployer \
+  --task-id deploy-42 \
+  --title "Deploying v1.3" \
+  --body "Build #42 deploying to production" \
+  --status in_progress \
+  --category deployment
 ```
+
+**Optional dependencies:**
+- `jq` - For proper JSON escaping (recommended but not required)
 
 ### 3. iPad App (Xcode)
 
-1. Open Xcode and create a new iPad app project named `LiveTimeline`
-2. Add the Swift package dependency: `https://github.com/awslabs/aws-sdk-swift` (add `AWSSQS` product)
-3. Copy the source files from `LiveTimeline/` into the project
-4. Build and run on your iPad
-5. Enter your AWS credentials and queue URL in the Settings tab
+1. Open `ipad/LiveTimeline/LiveTimeline.xcodeproj` in Xcode
+2. Build and run on your iPad (no external dependencies)
+3. Enter your Upstash Redis credentials in the Settings tab:
+   - **REST URL**: `https://mutual-firefly-12345.upstash.io`
+   - **REST Token**: Your token from Upstash console
+   - **Polling Interval**: 20s (default) - adjust based on your needs
+
+**Polling Interval Trade-offs:**
+- **20s**: ~130K requests/month, very responsive
+- **30s**: ~86K requests/month, good balance
+- **60s**: ~43K requests/month, minimal API usage
+
+Upstash free tier: 300K requests/month
 
 ## Future Enhancements
 
