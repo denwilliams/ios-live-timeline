@@ -3,13 +3,13 @@ import SwiftData
 
 @main
 struct LiveTimelineApp: App {
-    @State private var queueService = UpstashQueueService()
+    @State private var ablyService = AblyService()
 
     var body: some Scene {
         WindowGroup {
             TabView {
                 NavigationStack {
-                    TimelineView(queueService: queueService)
+                    TimelineView(ablyService: ablyService)
                         .navigationTitle("Timeline")
                 }
                 .tabItem {
@@ -17,7 +17,7 @@ struct LiveTimelineApp: App {
                 }
 
                 NavigationStack {
-                    SettingsView(queueService: queueService)
+                    SettingsView(ablyService: ablyService)
                         .navigationTitle("Settings")
                 }
                 .tabItem {
@@ -25,12 +25,9 @@ struct LiveTimelineApp: App {
                 }
             }
             .onAppear {
-                // Keep screen awake while app is running
                 UIApplication.shared.isIdleTimerDisabled = true
-                print("🔋 Screen idle timer disabled: \(UIApplication.shared.isIdleTimerDisabled)")
             }
             .onDisappear {
-                // Re-enable idle timer when app goes to background
                 UIApplication.shared.isIdleTimerDisabled = false
             }
         }

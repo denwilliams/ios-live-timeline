@@ -6,7 +6,7 @@ struct TimelineView: View {
     @Query(sort: \TimelineEvent.receivedAt, order: .reverse) private var events: [TimelineEvent]
     @State private var searchText = ""
     @State private var statusFilter: EventStatus?
-    @Bindable var queueService: UpstashQueueService
+    @Bindable var ablyService: AblyService
 
     private var filteredEvents: [TimelineEvent] {
         events.filter { event in
@@ -82,9 +82,9 @@ struct TimelineView: View {
         }
         .searchable(text: $searchText, prompt: "Search events")
         .onAppear {
-            queueService.configure(modelContext: modelContext)
+            ablyService.configure(modelContext: modelContext)
             if AppSettings.shared.isConfigured {
-                queueService.startPolling()
+                ablyService.connect()
             }
         }
     }
@@ -92,13 +92,13 @@ struct TimelineView: View {
     private var statusBar: some View {
         HStack {
             Circle()
-                .fill(queueService.isPolling ? .green : .red)
+                .fill(ablyService.isConnected ? .green : .red)
                 .frame(width: 8, height: 8)
-            Text(queueService.isPolling ? "Connected" : "Disconnected")
+            Text(ablyService.isConnected ? "Connected" : "Disconnected")
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
-            if let error = queueService.lastError {
+            if let error = ablyService.lastError {
                 Text(error)
                     .font(.caption)
                     .foregroundStyle(.red)

@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		B759828D2F6178A500F7A3BE /* Ably in Frameworks */ = {isa = PBXBuildFile; productRef = B759828C2F6178A500F7A3BE /* Ably */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		B7160C8A2F388E59006498E3 /* LiveTimeline.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = LiveTimeline.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				B759828D2F6178A500F7A3BE /* Ably in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = LiveTimeline;
 			packageProductDependencies = (
+				B759828C2F6178A500F7A3BE /* Ably */,
 			);
 			productName = LiveTimeline;
 			productReference = B7160C8A2F388E59006498E3 /* LiveTimeline.app */;
@@ -95,6 +101,7 @@
 			mainGroup = B7160C812F388E59006498E3;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
+				B759828B2F6178A500F7A3BE /* XCRemoteSwiftPackageReference "ably-cocoa" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = B7160C8B2F388E59006498E3 /* Products */;
@@ -336,6 +343,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		B759828B2F6178A500F7A3BE /* XCRemoteSwiftPackageReference "ably-cocoa" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ably/ably-cocoa";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.2.58;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		B759828C2F6178A500F7A3BE /* Ably */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B759828B2F6178A500F7A3BE /* XCRemoteSwiftPackageReference "ably-cocoa" */;
+			productName = Ably;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = B7160C822F388E59006498E3 /* Project object */;
 }

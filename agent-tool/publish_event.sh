@@ -1,10 +1,9 @@
 #!/bin/bash
 
-# publish_event.sh - Publish events to Upstash Redis queue for iOS Live Timeline
+# publish_event.sh - Publish events to Ably channel for iOS Live Timeline
 #
 # Usage:
-#   export UPSTASH_REDIS_URL="https://your-redis.upstash.io"
-#   export UPSTASH_REDIS_TOKEN="your-token"
+#   export ABLY_API_KEY="appId.keyId:keySecret"
 #   ./publish_event.sh --title "Event Title" --status info --agent-id my-agent
 #
 # Options:
@@ -15,6 +14,7 @@
 #   --status        Status: info|in_progress|success|warning|error (required)
 #   --category      Category label (optional)
 #   --timestamp     ISO 8601 timestamp (default: now)
+#   --channel       Ably channel name (default: timeline-events)
 
 set -e
 
@@ -26,6 +26,7 @@ BODY=""
 STATUS=""
 CATEGORY=""
 TIMESTAMP=""
+CHANNEL="timeline-events"
 
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -57,6 +58,10 @@ while [[ $# -gt 0 ]]; do
       TIMESTAMP="$2"
       shift 2
       ;;
+    --channel)
+      CHANNEL="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
       exit 1
@@ -65,13 +70,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate required parameters
-if [[ -z "$UPSTASH_REDIS_URL" ]]; then
-  echo "Error: UPSTASH_REDIS_URL environment variable not set"
-  exit 1
-fi
-
-if [[ -z "$UPSTASH_REDIS_TOKEN" ]]; then
-  echo "Error: UPSTASH_REDIS_TOKEN environment variable not set"
+if [[ -z "$ABLY_API_KEY" ]]; then
+  echo "Error: ABLY_API_KEY environment variable not set"
   exit 1
 fi
 
@@ -92,7 +92,6 @@ fi
 
 # Set defaults
 if [[ -z "$TASK_ID" ]]; then
-  # Generate UUID (works on macOS and Linux)
   if command -v uuidgen &> /dev/null; then
     TASK_ID=$(uuidgen | tr '[:upper:]' '[:lower:]')
   else
@@ -101,7 +100,6 @@ if [[ -z "$TASK_ID" ]]; then
 fi
 
 if [[ -z "$TIMESTAMP" ]]; then
-  # ISO 8601 timestamp
   TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 fi
 
@@ -113,9 +111,8 @@ else
 fi
 
 # Build JSON payload
-# Use jq if available for proper JSON escaping, otherwise use basic escaping
 if command -v jq &> /dev/null; then
-  PAYLOAD=$(jq -n \
+  EVENT_DATA=$(jq -n \
     --arg id "$EVENT_ID" \
     --arg agent_id "$AGENT_ID" \
     --arg task_id "$TASK_ID" \
@@ -135,25 +132,23 @@ if command -v jq &> /dev/null; then
       timestamp: $timestamp
     } | with_entries(select(.value != ""))')
 else
-  # Basic JSON construction (assumes no special characters needing escaping)
-  PAYLOAD="{\"id\":\"$EVENT_ID\",\"agent_id\":\"$AGENT_ID\",\"task_id\":\"$TASK_ID\",\"title\":\"$TITLE\""
-  [[ -n "$BODY" ]] && PAYLOAD="$PAYLOAD,\"body\":\"$BODY\""
-  PAYLOAD="$PAYLOAD,\"status\":\"$STATUS\""
-  [[ -n "$CATEGORY" ]] && PAYLOAD="$PAYLOAD,\"category\":\"$CATEGORY\""
-  PAYLOAD="$PAYLOAD,\"timestamp\":\"$TIMESTAMP\"}"
+  EVENT_DATA="{\"id\":\"$EVENT_ID\",\"agent_id\":\"$AGENT_ID\",\"task_id\":\"$TASK_ID\",\"title\":\"$TITLE\""
+  [[ -n "$BODY" ]] && EVENT_DATA="$EVENT_DATA,\"body\":\"$BODY\""
+  EVENT_DATA="$EVENT_DATA,\"status\":\"$STATUS\""
+  [[ -n "$CATEGORY" ]] && EVENT_DATA="$EVENT_DATA,\"category\":\"$CATEGORY\""
+  EVENT_DATA="$EVENT_DATA,\"timestamp\":\"$TIMESTAMP\"}"
 fi
 
-# Publish to Upstash Redis using LPUSH
-# Upstash Redis REST API expects: POST /lpush/key with body as JSON array
-# Each element in the array becomes a list item
-# Send the JSON object directly (not string-encoded)
-COMPACT_PAYLOAD=$(echo "$PAYLOAD" | jq -c .)
+# Build Ably publish request body
+# name = event name (for filtering), data = the JSON payload
+REQUEST_BODY=$(jq -n --arg name "event" --argjson data "$EVENT_DATA" '{name: $name, data: $data}')
 
+# Publish to Ably REST API
 RESPONSE=$(curl -s -w "\n%{http_code}" \
-  -X POST "$UPSTASH_REDIS_URL/lpush/timeline-events" \
-  -H "Authorization: Bearer $UPSTASH_REDIS_TOKEN" \
+  -X POST "https://rest.ably.io/channels/$CHANNEL/messages" \
+  -u "$ABLY_API_KEY" \
   -H "Content-Type: application/json" \
-  -d "[$COMPACT_PAYLOAD]")
+  -d "$REQUEST_BODY")
 
 HTTP_CODE=$(echo "$RESPONSE" | tail -1)
 RESPONSE_BODY=$(echo "$RESPONSE" | sed '$d')

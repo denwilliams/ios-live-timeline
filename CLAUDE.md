@@ -4,13 +4,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-iOS Live Timeline is an iPad app that displays real-time events from AI agents via Upstash Redis. Agents push status updates to a Redis list via REST API, and the iPad app polls the REST API to consume messages.
+iOS Live Timeline is an iPad app that displays real-time events from AI agents via Ably realtime. Agents push status updates to an Ably channel via REST API, and the iPad app subscribes via WebSocket for instant delivery.
 
 **Key Architecture Points:**
-- No backend server - agents publish directly to Upstash Redis REST API, iPad consumes via REST API
-- Redis list as queue (LPUSH to add, RPOP to consume)
-- Configurable polling interval (5-60 seconds) with adaptive behavior
-- Immediate retry when message received, wait interval when queue empty
+- No backend server - agents publish directly to Ably REST API, iPad subscribes via WebSocket using ably-cocoa SDK
+- Realtime WebSocket subscription for instant event delivery (no polling)
+- 24h persisted channel history for catch-up on connect
 - Local persistence via SwiftData
 - Upsert behavior: events with the same `task_id` replace older events
 - Events with future timestamps are treated as "upcoming" and displayed separately
@@ -19,7 +18,7 @@ iOS Live Timeline is an iPad app that displays real-time events from AI agents v
 
 ```
 agent-tool/                  # Bash script for agents to publish events
-  publish_event.sh          # Main script for publishing events to Upstash Redis (uses REST API)
+  publish_event.sh          # Main script for publishing events to Ably channel (uses REST API)
 
 ipad/LiveTimeline/          # Xcode project
   LiveTimeline/
@@ -27,13 +26,13 @@ ipad/LiveTimeline/          # Xcode project
     Models/
       TimelineEvent.swift   # SwiftData model + EventStatus enum + EventPayload
     Services/
-      UpstashQueueService.swift  # Upstash Redis REST API polling service
-      AppSettings.swift     # User defaults for Upstash credentials & polling interval
+      AblyService.swift     # Ably realtime subscription + history fetch service
+      AppSettings.swift     # User defaults for Ably API key & channel name
     Views/
       TimelineView.swift    # Main timeline UI
       EventRowView.swift    # Regular event row
       UpcomingEventRowView.swift  # Compact upcoming event row
-      SettingsView.swift    # Upstash credentials & polling interval configuration
+      SettingsView.swift    # Ably credentials & channel configuration
 ```
 
 ## Development Commands
@@ -45,9 +44,8 @@ Set up and publish test events:
 ```bash
 cd agent-tool
 
-# Set environment variables (REST API)
-export UPSTASH_REDIS_URL="https://mutual-firefly-12345.upstash.io"
-export UPSTASH_REDIS_TOKEN="your-rest-token-here"
+# Set environment variable
+export ABLY_API_KEY="appId.keyId:keySecret"
 
 # Publish an event
 ./publish_event.sh --title "Test Event" --status info --agent-id test-agent
@@ -59,7 +57,8 @@ export UPSTASH_REDIS_TOKEN="your-rest-token-here"
   --title "Deploying v1.3" \
   --body "Build #42 deploying to production" \
   --status in_progress \
-  --category deployment
+  --category deployment \
+  --channel my-channel
 ```
 
 **Optional dependencies:**
@@ -70,13 +69,13 @@ export UPSTASH_REDIS_TOKEN="your-rest-token-here"
 
 The iPad app is a standard Xcode project with no special build commands. Open `ipad/LiveTimeline/LiveTimeline.xcodeproj` in Xcode and build normally.
 
-**Dependencies:** None - uses URLSession for REST API calls
+**Dependencies:** ably-cocoa Swift package (SPM)
 
 **No testing infrastructure exists yet.**
 
 ## Event Payload Schema
 
-Agents publish JSON to Upstash Redis with this structure:
+Agents publish JSON to an Ably channel with this structure:
 
 ```json
 {
@@ -101,16 +100,17 @@ Agents publish JSON to Upstash Redis with this structure:
 
 ## Key Implementation Details
 
-### UpstashQueueService Polling Logic
+### AblyService Realtime Subscription
 
-[UpstashQueueService.swift](ipad/LiveTimeline/LiveTimeline/Services/UpstashQueueService.swift) implements:
-- REST API polling using RPOP command
-- Continuous polling loop that runs until cancelled
-- Adaptive polling: immediate retry when message received, configurable wait when queue empty
-- Configurable polling interval (5-60s, default 20s)
+[AblyService.swift](ipad/LiveTimeline/LiveTimeline/Services/AblyService.swift) implements:
+- WebSocket connection via `ARTRealtime` with connection state monitoring
+- Channel subscription for live messages via `channel.subscribe`
+- History fetch on connect: retrieves up to 100 persisted messages for catch-up
+- Message processing: handles both `NSDictionary` and `String` data formats from Ably
 - Upsert logic in `processEvent`: queries SwiftData for existing event by `task_id`, updates if found, inserts if new
-- Simple REST API using URLSession (no external dependencies)
-- Error handling with 5-second backoff on failures
+- ISO 8601 timestamp parsing with fractional seconds fallback
+- Connection state tracking (`isConnected`, `lastError`) for UI status display
+- Automatic reconnection handled by ably-cocoa SDK
 
 ### SwiftData Model
 
@@ -120,23 +120,13 @@ Agents publish JSON to Upstash Redis with this structure:
 - `EventStatus` enum maps to UI colors and system icons
 - `EventPayload` is the decodable struct with snake_case JSON keys
 
-### Upstash Redis Credentials
+### Ably Credentials
 
-Stored in [AppSettings.swift](ipad/LiveTimeline/LiveTimeline/Services/AppSettings.swift) using `@AppStorage` (UserDefaults):
-- REST URL (e.g., `https://mutual-firefly-12345.upstash.io`)
-- REST Token (bearer token)
-- Polling Interval (5-60 seconds, default 20)
+Stored in [AppSettings.swift](ipad/LiveTimeline/LiveTimeline/Services/AppSettings.swift) using UserDefaults:
+- Ably API key (format: `appId.keyId:keySecret`)
+- Channel name (default: `timeline-events`)
 
-User enters these in the Settings tab. No validation beyond "not empty".
-
-## API Usage Calculations
-
-**Polling Interval Estimates:**
-- 20s: 3 req/min × 60 × 24 × 30 = ~130K requests/month
-- 30s: 2 req/min × 60 × 24 × 30 = ~86K requests/month
-- 60s: 1 req/min × 60 × 24 × 30 = ~43K requests/month
-
-Upstash free tier: 300K requests/month (10K/day)
+User enters these in the Settings tab. The app is considered configured when the API key is not empty.
 
 ## Future Enhancements
 
@@ -148,16 +138,17 @@ See [FUTURE_IDEAS.md](FUTURE_IDEAS.md) for a detailed roadmap including:
 - Rich content (Markdown bodies, attachments, priority levels)
 - Agent health monitoring and anomaly detection
 
-## Upstash Setup
+## Ably Setup
 
-1. Create a Redis database at [console.upstash.com](https://console.upstash.com/redis)
-2. Go to the **REST API** tab
-3. Copy the REST URL (e.g., `https://mutual-firefly-12345.upstash.io`)
-4. Copy the REST token
-5. Set environment variables for the agent tool:
+1. Create an account at [ably.com](https://ably.com) and create a new app
+2. Go to the app's **API Keys** tab and copy the API key (format: `appId.keyId:keySecret`)
+3. Enable message persistence via a **channel rule**:
+   - Go to **Settings > Channel rules**
+   - Add a rule matching your channel (e.g., `timeline-events`)
+   - Enable **Persist last message** or **Persist all messages** (24h retention)
+4. Set environment variable for the agent tool:
    ```bash
-   export UPSTASH_REDIS_URL="https://mutual-firefly-12345.upstash.io"
-   export UPSTASH_REDIS_TOKEN="your-rest-token-here"
+   export ABLY_API_KEY="appId.keyId:keySecret"
    ```
-6. Enter the same credentials in the iPad app Settings tab
-7. Optionally adjust polling interval (default 20s)
+5. Enter the same API key in the iPad app Settings tab
+6. Optionally change the channel name (default: `timeline-events`) in both the agent tool (`--channel`) and iPad app Settings
