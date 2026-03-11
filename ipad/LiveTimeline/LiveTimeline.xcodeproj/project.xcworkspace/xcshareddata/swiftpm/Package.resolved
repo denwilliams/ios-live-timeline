@@ -1,0 +1,42 @@
+{
+  "originHash" : "b7a406d1842c2e9afe9e9e9e877fa27ec09d49c04c7250d7c48ac7607e79b610",
+  "pins" : [
+    {
+      "identity" : "ably-cocoa",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ably/ably-cocoa",
+      "state" : {
+        "revision" : "14d2661824652d0c6065dfe4dcf8c2e3781502fc",
+        "version" : "1.2.58"
+      }
+    },
+    {
+      "identity" : "ably-cocoa-plugin-support",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ably/ably-cocoa-plugin-support",
+      "state" : {
+        "revision" : "dd118432a6e023c3d2c8a051299e8081a06db036",
+        "version" : "1.0.0"
+      }
+    },
+    {
+      "identity" : "delta-codec-cocoa",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/ably/delta-codec-cocoa",
+      "state" : {
+        "revision" : "d53eec08f9443c6160d941327a6f9d8bbb93cea2",
+        "version" : "1.3.5"
+      }
+    },
+    {
+      "identity" : "msgpack-objective-c",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/rvi/msgpack-objective-C",
+      "state" : {
+        "revision" : "3e36b48e04ecd756cb927bd5f5b9bf6d45e475f9",
+        "version" : "0.4.0"
+      }
+    }
+  ],
+  "version" : 3
+}
